@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>오늘의 코딩 컨디션</title>
+<style>
+  :root{--accent:#ffd27a;--rain:#8fd3ff;--glass:rgba(14,26,48,.36)}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;padding:20px 16px 40px;color:#fff;
+    font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+    background:linear-gradient(160deg,#4d6a8a,#7690ad,#9db1c6,#4d6a8a);background-size:200% 200%;animation:flow 30s ease infinite}
+  @keyframes flow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+  /* 날씨별 하늘 (JS가 body에 clear/cloud/overcast/rain/snow, 밤이면 night 클래스를 붙인다) */
+  body.clear{background-image:linear-gradient(160deg,#1c5fb8,#3b8fd9,#79bde8,#1c5fb8)}
+  body.cloud{background-image:linear-gradient(160deg,#4d6a8a,#7690ad,#9db1c6,#4d6a8a)}
+  body.overcast{background-image:linear-gradient(160deg,#3f4b57,#68757f,#8b979f,#3f4b57)}
+  body.rain{background-image:linear-gradient(160deg,#1b2a3a,#33485c,#506b82,#1b2a3a)}
+  body.snow{background-image:linear-gradient(160deg,#55708f,#7e99b5,#a9bfd3,#55708f)}
+  body.night.clear{background-image:linear-gradient(160deg,#0b1026,#1b2a5a,#3a3f7a,#0b1026)}
+  body.night.cloud,body.night.overcast{background-image:linear-gradient(160deg,#141a2b,#2a3350,#3d4666,#141a2b)}
+  body.night.rain{background-image:linear-gradient(160deg,#0d1320,#1c2a3d,#2c3e55,#0d1320)}
+  body.night.snow{background-image:linear-gradient(160deg,#232c45,#46557a,#8393b5,#232c45)}
+  #fx{position:fixed;inset:0;pointer-events:none;z-index:0}
+  body.cloud #fx,body.overcast #fx{
+    background-image:radial-gradient(ellipse 40% 18% at 20% 25%,rgba(255,255,255,.28),transparent 70%),
+      radial-gradient(ellipse 45% 16% at 75% 60%,rgba(255,255,255,.22),transparent 70%),
+      radial-gradient(ellipse 35% 14% at 45% 85%,rgba(255,255,255,.2),transparent 70%);
+    background-size:140% 100%;animation:drift 60s linear infinite alternate}
+  @keyframes drift{to{background-position:100% 0}}
+  body.rain #fx{background-image:linear-gradient(100deg,transparent 48%,rgba(255,255,255,.35) 50%,transparent 52%);background-size:24px 70px;animation:fall .5s linear infinite}
+  @keyframes fall{to{background-position:-8px 70px}}
+  body.snow #fx{background-image:radial-gradient(circle,#fff 2px,transparent 3px),radial-gradient(circle,#fff 1.5px,transparent 2.5px);
+    background-size:90px 90px,53px 53px;background-position:0 0,20px 30px;animation:snow 8s linear infinite}
+  @keyframes snow{to{background-position:0 90px,20px 83px}}
+
+  #wrap{position:relative;z-index:1;max-width:1320px;margin:0 auto}
+  /* 왼쪽: 날씨예보, 오른쪽: 포켓몬 카드 */
+  #layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+  #pk{position:sticky;top:16px;text-align:center}
+  #pk h2{text-align:left}
+  #pkwhy{margin:0 0 4px;font-size:13px;opacity:.85;text-align:left}
+  #pkmsg{min-height:1.2em;font-size:13px;margin:6px 0}
+  #pkdraw{margin-top:6px}
+  #pkdraw:disabled{opacity:.5;cursor:wait}
+  @media (max-width:980px){#layout{grid-template-columns:1fr}#pk{position:static}}
+  .pcard{--mx:50%;--my:50%;--rx:0deg;--ry:0deg;position:relative;width:280px;height:420px;margin:12px auto;cursor:pointer;
+    transform:perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));transform-style:preserve-3d;transition:transform .1s}
+  .pinner{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .7s}
+  .pcard.flipped .pinner{transform:rotateY(180deg)}
+  .pface{position:absolute;inset:0;border-radius:16px;overflow:hidden;backface-visibility:hidden;box-shadow:0 10px 30px #0008}
+  /* 앞면: 은빛 홀로 테두리(포인터를 따라 반짝임) 안에 어두운 반투명 면. 태그팀 GX 카드처럼 노란 안쪽 선과 BASIC·HP 머리줄 */
+  .pfront{padding:8px 10px 10px;text-align:left;color:#eee;border:6px solid transparent;
+    background:linear-gradient(160deg,var(--c1),var(--c2)) padding-box,
+      linear-gradient(120deg,#dfe6ee 0%,#9fb0c8 16%,#fff 28%,#ffd6f0 38%,#cfe9ff 48%,#d9ffe6 58%,#fff 68%,#a9b6cc 84%,#e6ecf3 100%) border-box;
+    background-size:100% 100%,260% 260%;background-position:0 0,var(--mx) var(--my);
+    box-shadow:inset 0 0 0 2px rgba(217,232,74,.8),0 10px 30px #0008}
+  .phead{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  .pbasic{flex:none;padding:0 6px;border-radius:4px;background:#d9e84a;color:#222;font-size:10px;font-weight:700;letter-spacing:.04em}
+  .phead h3{flex:1;min-width:0;margin:0;font-size:15px;text-transform:capitalize;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .php{flex:none;font-size:11px;opacity:.85}
+  .php b{font-size:16px;color:#d9e84a}
+  .pback{transform:rotateY(180deg);background:#2a4a9b}
+  .pback img{width:100%;height:100%;object-fit:cover;display:block}
+  .part{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:8px;text-align:center}
+  .part img{width:212px;height:212px;object-fit:contain;filter:contrast(1.1) saturate(1.2) drop-shadow(0 4px 6px #000a)}
+  .ptypes{font-size:.85rem;margin:.5rem 0}
+  .pstat{display:flex;align-items:center;gap:6px;font-size:.8rem;margin:2px 0}
+  .pstat span:first-child{width:36px}
+  .pbar{flex:1;height:8px;background:#fff3;border-radius:4px;overflow:hidden}
+  .pbar i{display:block;height:100%;background:#ffb703}
+  /* 홀로그램 광택 (태그팀 GX 카드처럼): 카드 전체를 가로지르는 대각선 무지개 띠 + 가는 결 + 하이라이트. 기울이면 띠가 움직인다 */
+  .pfront::before,.pfront::after,.pglare{content:"";position:absolute;inset:0;pointer-events:none}
+  .pfront::before{
+    background:repeating-linear-gradient(115deg,transparent 0 10px,rgba(255,40,150,.9) 24px,rgba(255,225,40,.95) 36px,rgba(30,255,190,.95) 48px,rgba(40,140,255,.9) 60px,transparent 72px 110px);
+    background-size:220% 220%;background-position:var(--mx) var(--my);mix-blend-mode:screen;opacity:.5}
+  .pfront::after{background:repeating-linear-gradient(115deg,rgba(255,255,255,.16) 0 1px,transparent 1px 5px);mix-blend-mode:overlay}
+  .pglare{background:radial-gradient(circle at var(--mx) var(--my),rgba(255,255,255,.55) 0%,transparent 45%);mix-blend-mode:overlay}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  h1{margin:0;display:flex;align-items:center;gap:12px;font-size:22px;font-weight:500;letter-spacing:.02em}
+  h2{margin:0 0 10px;font-size:15px;font-weight:600;opacity:.85}
+  form{display:flex;gap:8px}
+  select,button{font:inherit;color:#fff;padding:8px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.3);
+    background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+  /* 기본 화살표는 글자와 멀리 떨어져 버튼 밖으로 나가서, 직접 그린 화살표를 안쪽에 둔다 */
+  select{appearance:none;-webkit-appearance:none;padding-right:38px;cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 15px center;background-size:11px}
+  select option{color:#111}
+  .logo{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:50%;
+    border:1px solid rgba(255,255,255,.35);background:var(--glass);color:var(--accent);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+  .logo svg{width:20px;height:20px}
+  button{cursor:pointer;font-weight:600}
+  button:hover{background:rgba(255,255,255,.2)}
+  select:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  #msg{margin:8px 0;min-height:1.2em;opacity:.9}
+  .err{color:#ffb4a8}
+
+  .card{background:var(--glass);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);
+    border:1px solid rgba(255,255,255,.24);border-radius:20px;padding:18px;
+    box-shadow:0 10px 30px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.25)}
+  #out{display:grid;grid-template-columns:repeat(6,1fr);gap:16px}
+  .hero,.outfit{grid-column:span 3}
+  .brief,.care,.air,.tempc{grid-column:span 6}
+  .ghc{grid-column:span 4}
+  .gc{grid-column:span 2}
+  @media (max-width:760px){#out>*{grid-column:1/-1}}
+
+  .temp{font-size:clamp(72px,14vw,120px);font-weight:200;line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+  .temp small{font-size:.35em;font-weight:300;margin-left:4px}
+  #sk{font-size:20px;margin-top:4px}
+  .sub{opacity:.8;font-size:14px;margin:4px 0 14px}
+  .slider{display:block;font-size:14px}
+  .slider output{color:var(--accent);font-weight:600;margin-left:6px}
+  .slider input{width:100%;margin:8px 0 0;accent-color:var(--accent)}
+  .outfit{display:flex;align-items:center;gap:12px}
+  .outfit p{margin:6px 0 0;line-height:1.5}
+  .outfit .big{font-size:18px;font-weight:600}
+  .cloth{margin-left:auto;font-size:56px;line-height:1.1;text-align:center}
+
+  /* 미세먼지 외출 가이드: 정상 / 주의 / 위험 */
+  :root{--okc:#6fdc9a;--warnc:#ffd27a;--badc:#ff8a80}
+  .ag{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px;align-items:center}
+  @media (max-width:760px){.ag{grid-template-columns:1fr}}
+  .badge{display:flex;align-items:center;gap:12px;padding:16px;border-radius:16px;border:1px solid}
+  .badge.ok{background:rgba(111,220,154,.18);border-color:rgba(111,220,154,.6)}
+  .badge.warn{background:rgba(255,210,122,.18);border-color:rgba(255,210,122,.6)}
+  .badge.bad{background:rgba(255,138,128,.2);border-color:rgba(255,138,128,.7)}
+  .bi{font-size:40px;line-height:1}
+  .bn{font-size:28px;font-weight:600;line-height:1.1}
+  .bs{font-size:13px;opacity:.8;margin-top:2px}
+  .at{margin:0 0 14px;line-height:1.5}
+  .mh{display:flex;align-items:baseline;gap:8px;font-size:14px}
+  .mh b{font-size:20px;font-weight:600}
+  .mh small{font-size:11px;font-weight:400;opacity:.75;margin-left:2px}
+  .mg{margin-left:auto;padding:1px 10px;border-radius:999px;font-size:12px;border:1px solid rgba(255,255,255,.35)}
+  .mt{position:relative;height:10px;border-radius:5px;margin:6px 0 14px}
+  .mt i{position:absolute;top:-4px;width:4px;height:18px;margin-left:-2px;border-radius:2px;background:#fff;box-shadow:0 0 6px rgba(0,0,0,.5)}
+  .asrc{margin-top:4px;font-size:12px;opacity:.75}
+  #airmsg,#caremsg{font-size:13px}
+  /* 꽃가루·자외선 한눈에: 정상/주의/위험 색은 미세먼지 가이드와 같다 */
+  .chead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .chead .bi{font-size:36px}
+  .chead b{font-size:clamp(20px,4vw,28px);font-weight:600;line-height:1.2}
+  .cgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:760px){.cgrid{grid-template-columns:1fr}}
+  .cgrid .bn{font-size:22px}
+  #apiurl4{white-space:pre-line}
+  /* 코딩 브리핑: 점수 + 코드 모양 요약 */
+  .bgrid{display:grid;grid-template-columns:200px minmax(0,1fr);gap:20px;align-items:center}
+  @media (max-width:760px){.bgrid{grid-template-columns:1fr}}
+  .slabel{text-align:center;font-weight:600;margin-top:2px}
+  pre.code{margin:0;padding:14px 16px;border-radius:14px;background:rgba(6,12,26,.55);border:1px solid rgba(255,255,255,.15);
+    font:13px/1.75 ui-monospace,"Cascadia Code",Consolas,"D2Coding",monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+  .code .k{color:#c4a7ff}.code .s{color:#9be59b}.code .n{color:#ffd27a}.code .c{color:rgba(255,255,255,.55)}.code .w{color:#ff9a8f}
+  .wnote{position:absolute;right:18px;bottom:16px;font-size:12px;opacity:.75;text-align:right}
+  svg{display:block;width:100%;height:auto}
+  .ax{fill:#fff;opacity:.7;font-size:11px;text-anchor:middle}
+  .lab{fill:#fff;font-size:12px;font-weight:600;text-anchor:middle}
+  .gbar{fill:var(--okc);opacity:.7}
+  .gbar.on{fill:var(--accent);opacity:1}
+  /* GitHub 활동 대시보드 */
+  .ghhead{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+  .ghhead img{width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.35)}
+  .ghhead a{color:#fff;font-weight:600;text-decoration:none;border-bottom:1px solid rgba(255,255,255,.4)}
+  .ghtotal{margin-left:auto;text-align:right}
+  .ghtotal b{display:block;font-size:28px;font-weight:300;line-height:1}
+  .ghtotal span{font-size:12px;opacity:.75}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+  .chip{padding:2px 10px;border-radius:999px;font-size:12px;border:1px solid rgba(255,255,255,.3)}
+  ul.gl{list-style:none;margin:0;padding:0;font-size:13px}
+  ul.gl li{display:flex;gap:8px;padding:5px 0;border-top:1px solid rgba(255,255,255,.12)}
+  .gl .et{flex:none;opacity:.75;min-width:2.4em}
+  .gl .r{flex:none;max-width:45%;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .gl .d{flex:1 1 0;min-width:0;opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .gl .t{flex:none;opacity:.7;white-space:nowrap}
+  .gt{fill:none;stroke:rgba(255,255,255,.2);stroke-width:9;stroke-linecap:round}
+  .gv{fill:none;stroke:var(--accent);stroke-width:9;stroke-linecap:round;transition:stroke-dasharray .4s}
+  .gn{fill:#fff;font-size:24px;font-weight:300;text-anchor:middle}
+  .gl{fill:#fff;opacity:.75;font-size:10px;text-anchor:middle}
+  .gs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  footer{margin-top:16px;font-size:13px;opacity:.85}
+  footer p{margin:4px 0}
+  #apibox{margin-top:10px;padding:10px 12px;font-size:12px;word-break:break-all}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="fx"></div>
+<main id="wrap">
+<header>
+  <h1><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 5l-3 14"/></svg></span>오늘의 코딩 컨디션</h1>
+  <form id="f">
+    <select id="city" aria-label="도시"></select>
+    <button>조회</button>
+  </form>
+</header>
+<div id="msg" role="status"></div>
+<div id="layout">
+<div id="out" hidden>
+  <section class="card brief">
+    <h2>오늘의 코딩 브리핑</h2>
+    <div class="bgrid">
+      <div><svg id="gs" viewBox="0 0 120 84" role="img" aria-label="코딩 컨디션 점수"></svg><div class="slabel" id="slabel"></div></div>
+      <pre class="code" id="code"></pre>
+    </div>
+  </section>
+  <section class="card hero">
+    <div class="temp"><span id="tv">–</span><small>℃</small></div>
+    <div id="sk"></div>
+    <div class="sub" id="mm"></div>
+    <label class="slider">예보 시각<output id="tt"></output>
+      <input id="sl" type="range" min="0" max="0" value="0" aria-label="예보 시각 선택">
+    </label>
+  </section>
+  <section class="card outfit">
+    <div><div class="big">코딩할 때 입을 옷</div><p id="wear"></p><div id="tips"></div></div>
+    <div class="cloth" id="cloth"></div>
+  </section>
+  <section class="card care">
+    <h2>꽃가루·자외선 가이드</h2>
+    <div id="carebody"></div>
+    <div id="caremsg" role="status"></div>
+  </section>
+  <section class="card air">
+    <h2>미세먼지 외출 가이드</h2>
+    <div id="airbody"></div>
+    <div id="airmsg" role="status"></div>
+  </section>
+  <section class="card tempc"><h2>기온 변화</h2><svg id="tc" viewBox="0 0 600 190" role="img" aria-label="앞으로 24시간 기온 변화 곡선"></svg></section>
+  <section class="card ghc">
+    <h2>GitHub 활동 대시보드</h2>
+    <div id="ghbody"></div>
+    <div id="ghmsg" role="status"></div>
+  </section>
+  <section class="card gc"><h2>풍속과 습도</h2><div class="gs"><svg id="g1" viewBox="0 0 120 84"></svg><svg id="g2" viewBox="0 0 120 84"></svg></div></section>
+</div>
+<aside class="card" id="pk" hidden>
+  <h2>오늘의 코딩 파트너</h2>
+  <p id="pkwhy"></p>
+  <div id="pkslot"></div>
+  <div id="pkmsg" role="status"></div>
+  <button id="pkdraw" type="button">다른 파트너 뽑기</button>
+  <div class="wnote" style="position:static;margin-top:8px;text-align:center">카드를 클릭하면 뒤집혀요</div>
+</aside>
+</div>
+<footer>
+  <p id="base"></p>
+  <p id="src">출처: 공공데이터포털 · 기상청 단기예보 조회서비스 / 기상청 생활기상지수·꽃가루농도위험지수 / 한국환경공단 에어코리아 대기오염정보 / GitHub REST API (api.github.com) / PokeAPI (pokeapi.co)</p>
+  <div class="card" id="apibox"><b>🔌 이 화면이 쓰는 API</b><div id="apiurl">아직 호출 전입니다.</div><div id="apiurl4"></div><div id="apiurl5"></div><div id="apiurl3"></div><div id="apiurl2"></div></div>
+</footer>
+</main>
+<script>
+// ⚠ API 키는 이 파일(과 어떤 JS·번들)에도 넣지 않는다. 브라우저로 간 값은 모두 공개된다. 키는 Netlify 환경변수에만 있고,
+//    아래 호출은 내 사이트의 /api/data/... (Netlify Function)로 가서 함수가 키를 붙인다. 자세한 설정은 netlify.toml 참고.
+const API = {
+  fcst: "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst", // 🔌 기상청 단기예보 (키는 Netlify 환경변수, 함수가 붙임)
+  air: "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty", // 🔌 에어코리아 시도별 측정정보 (키는 Netlify 환경변수, 함수가 붙임, 날씨와 같은 키)
+  uv: "https://apis.data.go.kr/1360000/LivingWthrIdxServiceV5/getUVIdxV5", // 🔌 기상청 생활기상지수: 자외선지수 (키는 Netlify 환경변수, 함수가 붙임, 같은 키)
+  oak: "https://apis.data.go.kr/1360000/HealthWthrIdxServiceV3/getOakPollenRiskIdxV3", // 🔌 기상청 꽃가루농도위험지수(3.0): 참나무
+  pine: "https://apis.data.go.kr/1360000/HealthWthrIdxServiceV3/getPinePollenRiskIdxV3", // 🔌 꽃가루농도위험지수(3.0): 소나무
+  weeds: "https://apis.data.go.kr/1360000/HealthWthrIdxServiceV3/getWeedsPollenRiskndxV3", // 🔌 꽃가루농도위험지수(3.0): 잡초류
+  gh: "https://api.github.com/users/", // 🔌 GitHub 공개 프로필·활동 (키 없음, 뒤에 사용자 이름이 붙음)
+  type: "https://pokeapi.co/api/v2/type/", // 🔌 속성별 포켓몬 목록 (뒤에 fire·water가 붙음)
+  pokemon: "https://pokeapi.co/api/v2/pokemon/", // 🔌 포켓몬 정보 (뒤에 도감 번호가 붙음)
+};
+const BACK = "https://upload.wikimedia.org/wikipedia/en/3/36/Pokemon_Trading_Card_Game_cardback.png"; // 🔌 카드 뒷면 이미지 (API 아님, 위키미디어 이미지)
+const COUNT = 1025; // shortcut: 도감 총수를 직접 적은 값, PokeAPI에 새 포켓몬이 늘면 고칠 것
+const proxied = (u, p) => `${u.replace("https://apis.data.go.kr/", "/api/data/")}?${p}`; // 호출은 내 함수로. 키는 함수가 붙인다
+const KEYNOTE = "&serviceKey=(서버가 환경변수에서 붙임)";
+// 키 오류·서비스 오류는 resultCode가 아니라 OpenAPI_ServiceResponse 모양으로 올 때가 있다
+const gate = j => { const e = j.OpenAPI_ServiceResponse?.cmmMsgHeader; if (e) throw new Error(`API ${e.returnReasonCode} ${e.returnAuthMsg}`); };
+const PSTATS = [["hp", "HP"], ["attack", "공격"], ["defense", "방어"], ["speed", "속도"]];
+const TINT = { // 카드 앞면 색 (속성별). 주변 유리 카드와 어울리게 낮은 채도 + 반투명
+  fire: ["rgba(128,78,66,.5)", "rgba(38,24,30,.6)"],
+  water: ["rgba(66,102,130,.5)", "rgba(18,32,50,.6)"],
+  none: ["rgba(70,82,112,.5)", "rgba(20,28,48,.6)"],
+};
+// 기상청 격자 좌표 (nx, ny)
+const CITY = { 서울:[60,127], 인천:[55,124], 대전:[67,100], 광주:[58,74], 대구:[89,90], 울산:[102,84], 부산:[98,76], 제주:[52,38] };
+const SKY = { 1:"맑음", 3:"구름많음", 4:"흐림" };
+const PTY = { 0:"없음", 1:"비", 2:"비/눈", 3:"눈", 4:"소나기" };
+
+const $ = id => document.getElementById(id);
+const say = (m, err) => { $("msg").textContent = m; $("msg").className = err ? "err" : ""; };
+const esc = v => String(v ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pad = n => String(n).padStart(2, "0");
+const ymd = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+
+$("city").innerHTML = Object.keys(CITY).map(c => `<option>${c}</option>`).join("");
+
+// 단기예보는 02·05·08·11·14·17·20·23시에 발표되고, 발표 약 10분 뒤부터 조회된다
+function baseTime() {
+  const t = new Date(Date.now() - 10 * 60000);
+  const bt = [23, 20, 17, 14, 11, 8, 5, 2].find(h => h <= t.getHours());
+  if (bt === undefined) { t.setDate(t.getDate() - 1); return [ymd(t), "2300"]; }
+  return [ymd(t), pad(bt) + "00"];
+}
+
+function recommend(min, max, rain, pop, wind) {
+  const t = min; // 가장 추운 시간대 기준
+  const [wear, icon] =
+    t >= 28 ? ["민소매, 반팔, 반바지, 원피스", "👙👕🩳"] :
+    t >= 23 ? ["반팔, 얇은 셔츠, 반바지", "👕🩳"] :
+    t >= 20 ? ["얇은 가디건, 긴팔 티, 면바지", "👔👖"] :
+    t >= 17 ? ["얇은 니트, 맨투맨, 가디건", "🧶👖"] :
+    t >= 12 ? ["자켓, 가디건, 야상, 청바지", "🧥👖"] :
+    t >= 9  ? ["자켓, 트렌치코트, 니트", "🧥🧶"] :
+    t >= 5  ? ["코트, 가죽자켓, 히트텍", "🧥🧣"] :
+              ["패딩, 두꺼운 코트, 목도리, 장갑", "🧥🧣🧤"];
+  const tips = [];
+  if (rain || pop >= 60) tips.push("☂️ 우산을 챙기세요");
+  if (max - min >= 10) tips.push("🧥 일교차가 커요. 벗고 입기 쉬운 겉옷을 챙기세요");
+  if (wind >= 7) tips.push("💨 바람이 강해요. 바람막이를 추천해요");
+  return { wear, tips, icon: icon + (rain || pop >= 60 ? "☂️" : "") };
+}
+
+/* ---------- 오늘의 코딩 브리핑: 날씨·공기·꽃가루를 코딩 컨디션으로 ---------- */
+const COND = { w: null, air: null, care: null }; // 각 호출이 끝나는 대로 채우고, 채워질 때마다 브리핑을 다시 그린다
+function renderBrief() {
+  const w = COND.w; if (!w) return;
+  const r = w.now0, t = +r.TMP, reh = +r.REH || 0, rainNow = +r.PTY > 0, notes = [];
+  const pl = COND.care?.pollen ?? 0, air = COND.air ?? 0;
+  let score = 70;
+  score += t >= 20 && t <= 25 ? 15 : (t >= 17 && t < 20) || (t > 25 && t <= 27) ? 8 : t < 10 || t > 30 ? -10 : 0; // 쾌적한 기온일수록 집중이 잘 된다
+  if (rainNow) score += 8; // 빗소리는 집중에 도움이 된다
+  if (reh >= 80) { score -= 8; notes.push("습도가 높아 졸릴 수 있어요. 환기나 제습을 해 주세요"); }
+  if (air) { score -= [0, 10, 20][air]; notes.push(`미세먼지 ${GRADE[air].name}: 창문을 닫고 공기청정기를 켜세요`); }
+  if (pl) { score -= [0, 3, 8, 14][pl]; if (pl >= 2) notes.push(`꽃가루 ${P_NAME[pl]}: 재채기에 주의하고 마스크를 챙기세요`); }
+  if (COND.care?.ul >= 2) notes.push(`자외선 ${COND.care.uv}: 점심 산책은 선크림과 모자를 챙기세요`);
+  score = Math.max(0, Math.min(100, score));
+  const label = score >= 80 ? "몰입 최적" : score >= 60 ? "무난한 하루" : score >= 40 ? "집중 주의" : "쉬어가는 날";
+  const place = air >= 1 || pl >= 2 ? "재택 코딩 (창문 닫고 공기청정기)" : rainNow ? "집이나 도서관 (빗소리 BGM)" :
+    t > 28 ? "에어컨 있는 실내" : t < 8 ? "따뜻한 실내" : t >= 15 && t <= 26 ? "카페나 야외 벤치도 좋아요" : "실내 코딩";
+  const theme = w.night || ["rain", "overcast"].includes(w.kind) ? "dark" : "light"; // 흐리고 어두운 날과 밤엔 다크 테마
+  const bgm = rainNow ? "빗소리 lo-fi" : w.kind === "snow" ? "피아노 ambient" : w.night ? "synthwave" : w.kind === "clear" ? "밝은 인디팝" : "lo-fi jazz";
+  const brk = "50분 집중, 10분 휴식" + (reh < 30 ? " (눈이 건조해요. 물 마시기)" : " (20-20-20 눈 휴식)");
+  const c = x => `<span class="c">${x}</span>`, s = x => `<span class="s">"${esc(x)}"</span>`;
+  const lines = [
+    c(`// ${esc($("city").value)} · 지금 ${t}℃ ${esc(SKY[r.SKY] ?? "")}`),
+    `<span class="k">const</span> today = {`,
+    `  score: <span class="n">${score}</span>, ${c("// " + label)}`,
+    `  place: ${s(place)},`,
+    `  editorTheme: ${s(theme)},`,
+    `  bgm: ${s(bgm)},`,
+    `  breakEvery: ${s(brk)},`,
+    `  wear: ${s(w.rec.wear)},`,
+    `};`,
+    ...notes.map(n => `<span class="w">// ⚠ ${esc(n)}</span>`),
+  ];
+  if (COND.air === null || COND.care === null) lines.push(c("// 미세먼지·꽃가루 정보가 없으면 있는 것만 반영해요"));
+  $("code").innerHTML = lines.join("\n");
+  gauge("gs", score, score, "코딩 컨디션");
+  $("slabel").textContent = label;
+}
+
+/* ---------- 미세먼지 외출 가이드 (선택한 지역의 에어코리아 측정값) ---------- */
+// 환경부 기준(㎍/㎥, 넘으면 한 단계 위): 좋음/보통/나쁨/매우나쁨 경계. 외출 가이드는 좋음·보통=정상, 나쁨=주의, 매우나쁨=위험
+const CUT = { pm10: [30, 80, 150], pm25: [15, 35, 75] };
+const MAX = { pm10: 200, pm25: 100 }; // 막대 눈금의 끝값
+const NAMES = ["좋음", "보통", "나쁨", "매우나쁨"];
+const GRADE = [
+  { name: "정상", icon: "😊", cls: "ok", text: "외출하기 좋아요. 평소처럼 야외 활동을 해도 괜찮아요." },
+  { name: "주의", icon: "😷", cls: "warn", text: "어린이·노약자·호흡기 질환자는 야외 활동을 줄이세요. 외출한다면 KF80 이상 마스크를 쓰세요." },
+  { name: "위험", icon: "🚫", cls: "bad", text: "가급적 실내에 머무르세요. 외출한다면 KF94 마스크를 쓰고 야외 운동은 피하세요." },
+];
+const g4 = (k, v) => CUT[k].filter(c => v > c).length; // 0~3
+const lvOf = (k, v) => [0, 0, 1, 2][g4(k, v)];         // 정상 0 / 주의 1 / 위험 2
+
+function meter(k, label, v) {
+  const [, c2, c3] = CUT[k], z1 = c2 / MAX[k] * 100, z2 = c3 / MAX[k] * 100, g = g4(k, v);
+  return `<div class="mh"><span>${label}</span><b>${v}<small>㎍/㎥</small></b><span class="mg">${NAMES[g]}</span></div>` +
+    `<div class="mt" style="background:linear-gradient(90deg,var(--okc) 0 ${z1}%,var(--warnc) ${z1}% ${z2}%,var(--badc) ${z2}% 100%)"><i style="left:${Math.min(100, v / MAX[k] * 100)}%"></i></div>`;
+}
+
+let airSeq = 0; // 지역을 빠르게 바꿔도 마지막 선택의 응답만 그린다
+async function loadAir() {
+  const my = ++airSeq, sido = $("city").value; // 에어코리아 시도명은 도시 이름과 같다
+  const p = new URLSearchParams({ returnType: "json", numOfRows: 100, pageNo: 1, sidoName: sido, ver: "1.3" });
+  $("airbody").innerHTML = ""; $("airmsg").className = ""; $("airmsg").textContent = "미세먼지를 불러오는 중...";
+  $("apiurl3").textContent = `${API.air}?${p}${KEYNOTE}`;
+  try {
+    const r = await fetch(proxied(API.air, p)); // 🔌 API 호출
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json(); gate(j);
+    if (my !== airSeq) return;
+    const h = j.response?.header; // HTTP 200이어도 resultCode로 오류를 알림 (00 = 정상)
+    if (h && h.resultCode !== "00") throw new Error(`API ${h.resultCode} ${h.resultMsg}`);
+    const items = j.response?.body?.items ?? [];
+    const avg = k => { const a = items.map(x => parseFloat(x[k])).filter(Number.isFinite); return a.length ? Math.round(a.reduce((s, v) => s + v, 0) / a.length) : null; };
+    const vals = [["pm10", "미세먼지 PM10", avg("pm10Value")], ["pm25", "초미세먼지 PM2.5", avg("pm25Value")]].filter(x => x[2] !== null);
+    if (!vals.length) throw new Error("측정값이 없어요");
+    const lvl = Math.max(...vals.map(([k, , v]) => lvOf(k, v))); // 둘 중 나쁜 쪽 기준
+    const G = GRADE[lvl];
+    COND.air = lvl; renderBrief();
+    $("airbody").innerHTML =
+      `<div class="ag"><div class="badge ${G.cls}"><span class="bi">${G.icon}</span><div><div class="bn">${G.name}</div><div class="bs">${esc(sido)} 평균</div></div></div>` +
+      `<div><p class="at">${esc(G.text)}</p>${vals.map(([k, label, v]) => meter(k, label, v)).join("")}</div></div>` +
+      `<div class="asrc">${esc(items[0]?.dataTime ?? "")} 측정 · 측정소 ${items.length}곳 평균</div>`;
+    $("airmsg").textContent = "";
+  } catch (err) {
+    if (my !== airSeq) return;
+    $("airmsg").className = "err"; $("airmsg").textContent = "미세먼지 정보를 불러오지 못했어요: " + err.message;
+  }
+}
+
+/* ---------- 꽃가루·자외선 가이드 (기상청 지수를 한 줄 행동 요령으로) ---------- */
+// 기상청 지역코드(areaNo): 시도 단위
+const AREA = { 서울:"1100000000", 인천:"2800000000", 대전:"3000000000", 광주:"2900000000", 대구:"2700000000", 울산:"3100000000", 부산:"2600000000", 제주:"5000000000" };
+const POLLEN = [["oak", "참나무"], ["pine", "소나무"], ["weeds", "잡초류"]]; // 꽃가루는 계절마다 제공되는 종류가 다르다
+const P_NAME = ["낮음", "보통", "높음", "매우 높음"];
+const P_DO = ["마스크 필요 없음", "민감하면 마스크", "마스크 권장", "마스크 필수"];
+const P_CLS = ["ok", "warn", "bad", "bad"];
+const UV_NAME = ["낮음", "보통", "높음", "매우 높음", "위험"];
+const UV_DO = ["선크림 선택", "선크림 권장", "선크림 필수", "선크림 필수 · 한낮 외출 자제", "선크림 필수 · 한낮 외출 자제"];
+const UV_CLS = ["ok", "warn", "bad", "bad", "bad"];
+const uvLevel = v => v < 3 ? 0 : v < 6 ? 1 : v < 8 ? 2 : v < 11 ? 3 : 4; // 기상청 자외선지수 구간
+
+// 오늘 하루의 최고 지수를 보려고 오늘 06시 발표분을 쓴다. 06시 전이면 어제 18시 발표분
+function lifeTime() {
+  const t = new Date();
+  if (t.getHours() >= 6) return ymd(t) + "06";
+  t.setDate(t.getDate() - 1); return ymd(t) + "18";
+}
+// 호출 1건: 항목 하나 또는 null(자료 없음). 꽃가루는 제공 기간 밖이면 99(자료제공기간 아님)가 온다
+async function lifeCall(url, areaNo, time) {
+  const p = new URLSearchParams({ pageNo: 1, numOfRows: 10, dataType: "JSON", areaNo, time });
+  const r = await fetch(proxied(url, p)); // 🔌 API 호출
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const j = await r.json(); gate(j);
+  const h = j.response?.header;
+  if (h?.resultCode === "03" || h?.resultCode === "99") return null; // 03 NO_DATA, 99 제공 기간 아님
+  if (h && h.resultCode !== "00") throw new Error(`API ${h.resultCode} ${h.resultMsg}`);
+  const it = j.response?.body?.items?.item;
+  return (Array.isArray(it) ? it[0] : it) ?? null;
+}
+const pollenToday = it => { const v = parseInt(it?.today, 10); return Number.isFinite(v) ? Math.min(3, v) : null; };
+// 자외선: today 값이 있으면 그것을, 없으면 3시간 간격 값(h0, h3, ...) 중 오늘 시각의 최댓값을 쓴다
+function uvToday(it) {
+  if (!it) return null;
+  const t = parseInt(it.today, 10);
+  if (Number.isFinite(t)) return t;
+  const b = String(it.date ?? ""), t0 = new Date(+b.slice(0, 4), +b.slice(4, 6) - 1, +b.slice(6, 8), +b.slice(8, 10)), today = ymd(new Date());
+  let best = null;
+  for (const [k, v] of Object.entries(it)) {
+    const m = k.match(/^h(\d+)$/), n = parseFloat(v);
+    if (!m || !Number.isFinite(n) || ymd(new Date(t0.getTime() + +m[1] * 3600e3)) !== today) continue;
+    best = best === null ? n : Math.max(best, n);
+  }
+  return best;
+}
+
+let careSeq = 0;
+async function loadCare() {
+  const my = ++careSeq, areaNo = AREA[$("city").value], time = lifeTime();
+  const shown = u => `${u}?${new URLSearchParams({ pageNo: 1, numOfRows: 10, dataType: "JSON", areaNo, time })}${KEYNOTE}`;
+  $("carebody").innerHTML = ""; $("caremsg").className = ""; $("caremsg").textContent = "꽃가루·자외선을 불러오는 중...";
+  $("apiurl4").textContent = [API.uv, ...POLLEN.map(([k]) => API[k])].map(shown).join("\n");
+  const res = await Promise.allSettled([API.uv, ...POLLEN.map(([k]) => API[k])].map(u => lifeCall(u, areaNo, time)));
+  if (my !== careSeq) return;
+  const [uvR, ...polR] = res;
+  COND.care = null;
+  const uv = uvR.status === "fulfilled" ? uvToday(uvR.value) : null;
+  const pol = polR.map((x, i) => [POLLEN[i][1], x.status === "fulfilled" ? pollenToday(x.value) : null]).filter(x => x[1] !== null);
+  const errs = res.filter(x => x.status === "rejected").map(x => x.reason.message);
+  if (uv === null && !pol.length) {
+    $("caremsg").className = "err";
+    $("caremsg").textContent = errs.length ? "꽃가루·자외선 정보를 불러오지 못했어요: " + errs[0] : "지금은 꽃가루·자외선 지수가 없어요. 제공 기간이나 발표 시각을 확인해 주세요.";
+    return;
+  }
+  const worst = pol.length ? pol.reduce((a, b) => b[1] > a[1] ? b : a) : null; // 가장 높은 꽃가루
+  const ul = uv === null ? null : uvLevel(uv);
+  COND.care = { pollen: worst ? worst[1] : 0, uv, ul }; renderBrief();
+  const head = [worst ? P_DO[worst[1]] : null, ul === null ? null : UV_DO[ul]].filter(Boolean).join(", ");
+  const icon = (worst ? (worst[1] >= 2 ? "😷" : "🌼") : "") + (ul === null ? "" : ul >= 1 ? "🧴" : "🕶️");
+  const tile = (ic, cls, name, sub) => `<div class="badge ${cls}"><span class="bi">${ic}</span><div><div class="bn">${esc(name)}</div><div class="bs">${esc(sub)}</div></div></div>`;
+  $("carebody").innerHTML =
+    `<div class="chead"><span class="bi">${icon}</span><b>${esc(head)}</b></div><div class="cgrid">` +
+    (worst ? tile("🌼", P_CLS[worst[1]], `꽃가루 ${P_NAME[worst[1]]}`, pol.map(([n, v]) => `${n} ${P_NAME[v]}`).join(" · ")) :
+             tile("🌼", "ok", "꽃가루 정보 없음", "지금은 제공 기간이 아니에요")) +
+    (ul !== null ? tile("☀️", UV_CLS[ul], `자외선 ${uv} · ${UV_NAME[ul]}`, "오늘 낮 최고 자외선지수") :
+                   tile("☀️", "ok", "자외선 정보 없음", "불러오지 못했어요")) + `</div>`;
+  $("caremsg").textContent = errs.length ? "일부 지수를 불러오지 못했어요: " + errs[0] : "";
+}
+
+/* ---------- 차트 ---------- */
+const S = { rows: [], i: 0 };
+const CW = 600, CH = 190, L = 14, R = 14, T = 26, B = 28;
+
+function drawTemp(rows) {
+  const n = rows.length, ts = rows.map(r => +r.TMP), lo = Math.min(...ts) - 1, hi = Math.max(...ts) + 1;
+  S.X = i => L + i * (CW - L - R) / (n - 1);
+  S.Y = v => T + (hi - v) * (CH - T - B) / (hi - lo);
+  let d = `M${S.X(0)} ${S.Y(ts[0])}`;
+  for (let i = 1; i < n; i++) { const mx = (S.X(i - 1) + S.X(i)) / 2; d += ` C${mx} ${S.Y(ts[i - 1])} ${mx} ${S.Y(ts[i])} ${S.X(i)} ${S.Y(ts[i])}`; }
+  const iMax = ts.indexOf(Math.max(...ts)), iMin = ts.indexOf(Math.min(...ts));
+  $("tc").innerHTML =
+    `<defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd27a" stop-opacity=".45"/><stop offset="1" stop-color="#ffd27a" stop-opacity="0"/></linearGradient></defs>` +
+    `<path d="${d} L${S.X(n - 1)} ${CH - B} L${S.X(0)} ${CH - B}Z" fill="url(#ag)"/>` +
+    `<path d="${d}" fill="none" stroke="#ffd27a" stroke-width="2.5" stroke-linecap="round"/>` +
+    rows.map((r, i) => i % 3 === 0 ? `<text class="ax" x="${S.X(i)}" y="${CH - 8}">${esc(r.k.slice(8, 10))}시</text>` : "").join("") +
+    `<text class="lab" x="${S.X(iMax)}" y="${S.Y(ts[iMax]) - 8}">${ts[iMax]}°</text>` +
+    (iMin !== iMax ? `<text class="lab" x="${S.X(iMin)}" y="${S.Y(ts[iMin]) + 18}">${ts[iMin]}°</text>` : "") +
+    `<line id="cl" y1="${T - 6}" y2="${CH - B}" stroke="#fff" stroke-opacity=".5" stroke-dasharray="3 3"/><circle id="cd" r="5.5" fill="#fff" stroke="#ffd27a" stroke-width="3"/>`;
+}
+function gauge(id, pct, text, label) {
+  const d = "M12 62 A48 48 0 0 1 108 62";
+  $(id).innerHTML = `<path class="gt" d="${d}" pathLength="100"/><path class="gv" d="${d}" pathLength="100" stroke-dasharray="${Math.max(0, Math.min(100, pct))} 100"/>` +
+    `<text class="gn" x="60" y="58">${esc(text)}</text><text class="gl" x="60" y="76">${esc(label)}</text>`;
+}
+
+// 선택한 예보 시각 하나를 화면 전체에 반영한다
+function show(i) {
+  const r = S.rows[i], spd = +r.WSD || 0, reh = +r.REH || 0;
+  S.i = i; $("sl").value = i;
+  $("tv").textContent = r.TMP;
+  $("sk").textContent = (SKY[r.SKY] ?? "") + (+r.PTY > 0 ? ` · ${PTY[r.PTY]}` : "");
+  $("tt").textContent = `${+r.k.slice(6, 8)}일 ${r.k.slice(8, 10)}시`;
+  gauge("g1", spd / 14 * 100, spd, "풍속 m/s");
+  gauge("g2", reh, reh, "습도 %");
+  const cl = $("cl"), cd = $("cd");
+  if (cl) { const x = S.X(i), y = S.Y(+r.TMP); cl.setAttribute("x1", x); cl.setAttribute("x2", x); cd.setAttribute("cx", x); cd.setAttribute("cy", y); }
+}
+$("sl").oninput = e => show(+e.target.value);
+$("tc").addEventListener("pointermove", e => {
+  const b = $("tc").getBoundingClientRect(), n = S.rows.length;
+  const i = Math.round(((e.clientX - b.left) / b.width * CW - L) / (CW - L - R) * (n - 1));
+  if (n && i >= 0 && i < n && i !== S.i) show(i);
+});
+
+/* ---------- GitHub 활동 대시보드 (공개 활동만, 날씨·지역과 무관) ---------- */
+let GH_USER = ""; // 환경변수 GITHUB_USER (/api/config 로 받는다)
+const GH_DAYS = 14;
+const GH_TTL = 10 * 60000; // 키 없이는 시간당 60회라서, 10분간은 저장된 결과를 쓴다
+const EV_NAME = { PushEvent: "푸시", PullRequestEvent: "PR", PullRequestReviewEvent: "리뷰", IssuesEvent: "이슈", IssueCommentEvent: "댓글",
+  CreateEvent: "생성", DeleteEvent: "삭제", WatchEvent: "스타", ForkEvent: "포크", ReleaseEvent: "릴리스" };
+const evName = t => EV_NAME[t] ?? t.replace(/Event$/, "");
+const ago = iso => { const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000)); return m < 60 ? `${m}분 전` : m < 1440 ? `${Math.floor(m / 60)}시간 전` : `${Math.floor(m / 1440)}일 전`; };
+const evDetail = e => { const p = e.payload ?? {}; return p.pull_request?.title ?? p.issue?.title ?? (p.ref ? String(p.ref).replace("refs/heads/", "") : ""); };
+
+async function ghGet(url) {
+  const r = await fetch(url); // 🔌 API 호출
+  if (r.status === 403 || r.status === 429) {
+    const reset = +r.headers.get("x-ratelimit-reset");
+    throw new Error("GitHub 요청 한도(시간당 60회)를 넘었어요" + (reset ? `. ${new Date(reset * 1000).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 이후에 다시 시도해 주세요` : ""));
+  }
+  if (r.status === 404) throw new Error(`GitHub 사용자 ${GH_USER}를 찾을 수 없어요`);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+function ghCache() { try { const c = JSON.parse(sessionStorage.getItem("gh:" + GH_USER)); return c && Date.now() - c.t < GH_TTL ? c : null; } catch { return null; } }
+
+function renderGh(u, ev) {
+  const days = Array.from({ length: GH_DAYS }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (GH_DAYS - 1 - i)); return { k: ymd(d), n: 0, d: d.getDate() }; });
+  const idx = Object.fromEntries(days.map((x, i) => [x.k, i])), types = {};
+  for (const e of ev) { const i = idx[ymd(new Date(e.created_at))]; if (i === undefined) continue; days[i].n++; types[e.type] = (types[e.type] ?? 0) + 1; }
+  const total = days.reduce((s, x) => s + x.n, 0), maxN = Math.max(1, ...days.map(x => x.n));
+  const bw = (CW - L - R) / GH_DAYS, top = 22, base = 106;
+  const bars = days.map((x, i) => {
+    const h = x.n ? Math.max(3, x.n / maxN * (base - top)) : 2, bx = L + i * bw;
+    return `<rect class="gbar${i === GH_DAYS - 1 ? " on" : ""}" x="${bx + 3}" y="${base - h}" width="${bw - 6}" height="${h}" rx="3"/>` +
+      (x.n ? `<text class="lab" x="${bx + bw / 2}" y="${base - h - 5}">${x.n}</text>` : "") +
+      (i % 2 === (GH_DAYS - 1) % 2 ? `<text class="ax" x="${bx + bw / 2}" y="124">${x.d}일</text>` : "");
+  }).join("");
+  const chips = Object.entries(types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="chip">${esc(evName(t))} ${n}</span>`).join("");
+  const recent = ev.slice(0, 5).map(e => `<li><span class="et">${esc(evName(e.type))}</span><span class="r">${esc(e.repo?.name ?? "")}</span><span class="d">${esc(evDetail(e))}</span><span class="t">${ago(e.created_at)}</span></li>`).join("");
+  $("ghbody").innerHTML =
+    `<div class="ghhead"><img src="${esc(u.avatar_url)}" alt=""><div><a href="${esc(u.html_url)}" target="_blank" rel="noopener">@${esc(u.login)}</a>` +
+    `<div class="bs">공개 저장소 ${u.public_repos} · 팔로워 ${u.followers} · 팔로잉 ${u.following}</div></div>` +
+    `<div class="ghtotal"><b>${total}</b><span>최근 ${GH_DAYS}일 활동</span></div></div>` +
+    `<svg viewBox="0 0 600 130" role="img" aria-label="최근 ${GH_DAYS}일 날짜별 GitHub 활동 막대그래프">${bars}</svg>` +
+    `<div class="chips">${chips}</div>` +
+    (recent ? `<ul class="gl">${recent}</ul>` : `<p class="bs">최근 공개 활동이 없어요.</p>`) +
+    `<div class="asrc">공개 활동만 집계해요 · 최근 최대 100건 기준</div>`;
+}
+async function loadGh() {
+  if (!GH_USER) { $("ghmsg").className = "err"; $("ghmsg").textContent = "Netlify 환경변수(로컬은 .env)에 GITHUB_USER(GitHub 사용자 이름)를 넣어 주세요."; return; }
+  $("ghmsg").className = ""; $("ghmsg").textContent = "GitHub 활동을 불러오는 중...";
+  const uUrl = API.gh + GH_USER, eUrl = `${API.gh}${GH_USER}/events/public?per_page=100`;
+  $("apiurl5").innerHTML = [uUrl, eUrl].map(x => `<a href="${esc(x)}" target="_blank" rel="noopener">${esc(x)}</a>`).join("<br>"); // 원본 JSON 링크
+  try {
+    let c = ghCache();
+    if (!c) {
+      const [user, events] = await Promise.all([ghGet(uUrl), ghGet(eUrl)]);
+      c = { t: Date.now(), user, events };
+      try { sessionStorage.setItem("gh:" + GH_USER, JSON.stringify(c)); } catch {}
+    }
+    renderGh(c.user, c.events);
+    $("ghmsg").textContent = "";
+  } catch (err) {
+    $("ghbody").innerHTML = ""; $("ghmsg").className = "err"; $("ghmsg").textContent = "GitHub 활동을 불러오지 못했어요: " + err.message;
+  }
+}
+
+/* ---------- 포켓몬 카드 (날씨에 맞는 속성에서 랜덤) ---------- */
+function pokemonType(r) { // 비 → 물, 더위(28℃ 이상) → 불, 그 밖에는 속성 제한 없음
+  if ([1, 2, 4].includes(+r.PTY)) return ["water", "비가 와서 물 속성 포켓몬이 나왔어요"];
+  if (+r.TMP >= 28) return ["fire", "더워서 불 속성 포켓몬이 나왔어요"];
+  return [null, "특별한 날씨가 아니라서 아무 포켓몬이나 골랐어요"];
+}
+const typeCache = {};
+async function typeIds(type) {
+  if (typeCache[type]) return typeCache[type];
+  const r = await fetch(API.type + type); // 🔌 API 호출
+  if (!r.ok) throw new Error(r.status);
+  const ids = (await r.json()).pokemon.map(x => +x.pokemon.url.match(/\/(\d+)\/?$/)[1]).filter(n => n <= COUNT); // 폼 변형(1025 초과)은 그림이 없어 뺀다
+  return typeCache[type] = ids;
+}
+async function drawPokemon() {
+  if (!S.rows.length) return;
+  const [type, why] = pokemonType(S.rows[0]);
+  $("pkwhy").textContent = why; $("pkmsg").textContent = "불러오는 중…"; $("pkdraw").disabled = true;
+  try {
+    const ids = type ? await typeIds(type) : null;
+    const id = ids ? ids[Math.floor(Math.random() * ids.length)] : 1 + Math.floor(Math.random() * COUNT);
+    $("apiurl2").textContent = (type ? `${API.type}${type} → ` : "") + API.pokemon + id;
+    const r = await fetch(API.pokemon + id); // 🔌 API 호출
+    if (!r.ok) throw new Error(r.status);
+    showPokemon(await r.json(), type);
+    $("pkmsg").textContent = "";
+  } catch {
+    $("pkmsg").textContent = "포켓몬을 불러오지 못했어요. 다시 눌러 보세요.";
+  }
+  $("pkdraw").disabled = false;
+}
+function showPokemon(p, type) {
+  const img = p.sprites.other["official-artwork"].front_default || p.sprites.front_default;
+  const stat = n => p.stats.find(s => s.stat.name === n).base_stat;
+  const [c1, c2] = TINT[type] ?? TINT.none;
+  $("pkslot").innerHTML = `
+    <div class="pcard" id="pcard" tabindex="0" role="button" aria-label="카드 뒤집기">
+      <div class="pinner">
+        <div class="pface pfront" style="--c1:${c1};--c2:${c2}">
+          <div class="phead"><span class="pbasic">BASIC</span><h3>${esc(p.name)}</h3><span class="php">HP <b>${stat("hp")}</b></span></div>
+          <div class="part"><img src="${esc(img)}" alt="${esc(p.name)}"></div>
+          <div class="pglare"></div>
+          <div class="ptypes">#${p.id} · ${p.types.map(t => esc(t.type.name)).join(" · ")}</div>
+          ${PSTATS.map(([k, label]) => `<div class="pstat"><span>${label}</span><div class="pbar"><i style="width:${Math.min(stat(k) / 2, 100)}%"></i></div><span>${stat(k)}</span></div>`).join("")}
+        </div>
+        <div class="pface pback"><img src="${BACK}" alt="포켓몬 카드 뒷면"></div>
+      </div>
+    </div>`;
+  const card = $("pcard"), flip = () => card.classList.toggle("flipped");
+  card.addEventListener("click", flip);
+  card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(); } });
+  card.addEventListener("pointermove", e => {
+    const b = card.getBoundingClientRect(), x = (e.clientX - b.left) / b.width, y = (e.clientY - b.top) / b.height;
+    card.style.setProperty("--mx", x * 100 + "%"); card.style.setProperty("--my", y * 100 + "%");
+    card.style.setProperty("--ry", (x - .5) * 24 + "deg"); card.style.setProperty("--rx", (.5 - y) * 24 + "deg");
+  });
+  card.addEventListener("pointerleave", () => ["--mx", "--my", "--rx", "--ry"].forEach(v => card.style.removeProperty(v)));
+}
+$("pkdraw").onclick = drawPokemon;
+
+async function load() {
+  const [nx, ny] = CITY[$("city").value];
+  const [base_date, base_time] = baseTime();
+  const p = new URLSearchParams({
+    pageNo: 1, numOfRows: 1000, dataType: "JSON", base_date, base_time, nx, ny,
+  });
+  $("out").hidden = true; $("pk").hidden = true; $("base").textContent = ""; say("불러오는 중...");
+  COND.w = COND.air = COND.care = null;
+  loadAir(); loadCare(); // 날씨와 따로 호출해서, 한쪽이 실패해도 다른 쪽은 보인다
+  $("apiurl").textContent = `${API.fcst}?${p}${KEYNOTE}`;
+  try {
+    const r = await fetch(proxied(API.fcst, p)); // 🔌 API 호출
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json(); gate(j);
+    const h = j.response?.header; // HTTP 200이어도 resultCode로 오류를 알림 (00 = 정상)
+    if (h && h.resultCode !== "00") throw new Error(`API ${h.resultCode} ${h.resultMsg}`);
+    const items = j.response?.body?.items?.item ?? [];
+    if (!items.length) return say("예보 데이터가 없습니다.");
+
+    // 시간별로 묶기: { "202610211500": {TMP:"18", SKY:"1", ...} }
+    const by = {};
+    for (const i of items) (by[i.fcstDate + i.fcstTime] ??= {})[i.category] = i.fcstValue;
+    const now = ymd(new Date()) + pad(new Date().getHours()) + "00";
+    const rows = Object.keys(by).sort().filter(k => k >= now).slice(0, 24).map(k => ({ k, ...by[k] }));
+    if (rows.length < 2) return say("지금 이후의 예보가 충분하지 않아요. 잠시 뒤에 다시 조회해 주세요.");
+
+    const temps = rows.map(x => +x.TMP);
+    const min = Math.min(...temps), max = Math.max(...temps);
+    const pop = Math.max(...rows.map(x => +x.POP || 0));
+    const wmax = Math.max(...rows.map(x => +x.WSD || 0));
+    const rain = rows.some(x => +x.PTY > 0);
+    const now0 = rows[0], rec = recommend(min, max, rain, pop, wmax);
+    const kind = +now0.PTY === 3 || +now0.PTY === 2 ? "snow" : +now0.PTY > 0 ? "rain" : ({ 1: "clear", 3: "cloud", 4: "overcast" }[now0.SKY] ?? "cloud");
+    const hour = +now0.k.slice(8, 10);
+    document.body.className = kind + (hour >= 19 || hour < 6 ? " night" : "");
+
+    S.rows = rows;
+    $("mm").textContent = `앞으로 24시간 최저 ${min}℃ · 최고 ${max}℃`;
+    $("wear").textContent = rec.wear;
+    $("tips").innerHTML = rec.tips.map(t => `<p>${esc(t)}</p>`).join("");
+    $("cloth").textContent = rec.icon;
+    $("sl").max = rows.length - 1;
+    $("out").hidden = false;
+    $("pk").hidden = false;
+    COND.w = { now0, kind, night: hour >= 19 || hour < 6, rec };
+    drawTemp(rows); show(0); renderBrief();
+    drawPokemon(); // 날씨 카드와 별개로 호출해서, 포켓몬이 실패해도 예보는 보인다
+    $("base").textContent = `기준: ${base_date.slice(0, 4)}-${base_date.slice(4, 6)}-${base_date.slice(6)} ${base_time.slice(0, 2)}시 발표 예보`;
+    say("");
+  } catch (err) {
+    say("오류: " + err.message + " (키/CORS/기준 시각 확인)", true);
+  }
+}
+/* ---------- 시작: 키는 서버(Netlify Function)가 들고 있고, 화면은 /api/config 로 공개해도 되는 값만 받는다 ---------- */
+const NEED_NETLIFY = "/api 를 찾지 못했어요. 이 화면은 Netlify에 배포하거나, 프로젝트 폴더에서 npx netlify dev 로 열어야 키가 숨겨져서 동작해요. (Live Server·파일 더블클릭은 안 돼요)";
+async function startup() {
+  let cfg = null;
+  try { const r = await fetch("/api/config", { cache: "no-store" }); if (r.ok) cfg = await r.json(); } catch {} // 🔌 API 아님: 내 사이트의 함수
+  if (!cfg) return say(NEED_NETLIFY, true);
+  GH_USER = cfg.githubUser || "";
+  load(); loadGh(); // 지역과 무관한 GitHub는 한 번만 부른다
+}
+$("f").onsubmit = e => { e.preventDefault(); load(); };
+startup();
+
+</script>
+</body>
+</html>

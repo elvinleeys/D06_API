@@ -1,0 +1,22 @@
+# Netlify 배포 설정. 빌드 없이 d6-api 폴더를 그대로 올린다.
+#
+# ⚠ API 키는 공개되면 안 된다. 코드·HTML·번들러(VITE_ 등) 환경변수에 넣지 말고,
+#    Netlify 사이트 설정 > Environment variables 에만 넣는다 (Functions 범위, "Contains secret values" 체크).
+#      WEATHER_SERVICE_KEY = 공공데이터포털 일반 인증키(Decoding)
+#      GITHUB_USER         = GitHub 사용자 이름 (비밀 아님)
+#
+# 로컬 확인: 이 폴더에서 `npx netlify dev` (루트의 .env를 읽는다). Live Server로는 함수가 없어서 동작하지 않는다.
+
+[build]
+  publish = "d6-api"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/"
+  to = "/weather-cloth.html"
+  status = 200

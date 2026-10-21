@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>서울 지하철 운행시간</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:900px;margin:0 auto;padding:16px}
+  form{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  input,select,button{padding:8px;font-size:16px}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #ccc;padding:6px;text-align:center}
+  th{background:#f0f0f0}
+  #msg{margin:8px 0;color:#555}
+  .err{color:#c00!important}
+  #src{font-size:13px;color:#555}
+  #apibox{margin-top:16px;padding:10px;border:1px solid #ccc;background:#fafafa;font-size:13px;word-break:break-all}
+</style>
+</head>
+<body>
+<h1>서울 지하철 열차 운행시간</h1>
+<form id="f">
+  <select id="line"><option>1호선</option><option>2호선</option><option>3호선</option><option>4호선</option><option>5호선</option><option>6호선</option><option>7호선</option><option>8호선</option></select>
+  <input id="station" placeholder="역 이름 (예: 시청)" required>
+  <select id="day"><option>평일</option><option>주말</option><option>공휴일</option></select>
+  <button>조회</button>
+</form>
+<div id="msg"></div>
+<table id="t"></table>
+<p id="src">출처: 공공데이터포털 · 서울교통공사 열차시간표</p>
+<div id="apibox"><b>🔌 이 화면이 쓰는 API</b><div id="apiurl">아직 호출 전입니다.</div></div>
+<script src="../config.js"></script>
+<script>
+const API = {
+  train: "https://apis.data.go.kr/B553766/schedule/getTrainSch", // 🔌 서울교통공사 열차시간표 (키는 ../config.js)
+};
+const PARAM = { line: "lineNm", station: "stnNm", day: "wkndSe" }; // 🔌 명세의 요청변수명
+const $ = id => document.getElementById(id);
+const say = (m, err) => { $("msg").textContent = m; $("msg").className = err ? "err" : ""; };
+const esc = v => String(v ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+$("f").onsubmit = async e => {
+  e.preventDefault();
+  const p = new URLSearchParams({
+    serviceKey: CONFIG.SERVICE_KEY, pageNo: 1, numOfRows: 10, dataType: "JSON",
+    [PARAM.line]: $("line").value,
+    [PARAM.station]: $("station").value.trim(),
+    [PARAM.day]: $("day").value,
+  });
+  $("t").innerHTML = ""; say("조회 중...");
+  $("apiurl").textContent = `${API.train}?${p}`; // 화면에는 키를 가려서 표시
+  p.set("serviceKey", CONFIG.SERVICE_KEY);
+  try {
+    const r = await fetch(`${API.train}?${p}`); // 🔌 API 호출
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    const h = j.response?.header; // HTTP 200이어도 공공데이터포털은 resultCode로 오류를 알림 (00 = 정상)
+    if (h && h.resultCode !== "00") throw new Error(`API ${h.resultCode} ${h.resultMsg}`);
+    let items = j.response?.body?.items;
+    items = Array.isArray(items) ? items : items?.item ?? [];
+    if (!items.length) return say("조회 결과가 없습니다.");
+    const cols = Object.keys(items[0]);
+    $("t").innerHTML = "<tr>" + cols.map(c => `<th>${esc(c)}</th>`).join("") + "</tr>" +
+      items.map(i => "<tr>" + cols.map(c => `<td>${esc(i[c])}</td>`).join("") + "</tr>").join("");
+    say(`${items.length}건`);
+  } catch (err) {
+    say("오류: " + err.message + " (키/파라미터명/CORS 확인)", true);
+  }
+};
+</script>
+</body>
+</html>
