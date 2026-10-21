@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>랜덤 포켓몬 카드</title>
+<style>
+  body { font-family: sans-serif; background: #1b1b2f; color: #eee; text-align: center; margin: 0; padding: 2rem 1rem; }
+  button { font-size: 1.1rem; padding: .6rem 1.2rem; border-radius: 999px; border: 0; background: #ffcb05; color: #222; font-weight: bold; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: wait; }
+  #status { margin: 1rem 0; min-height: 1.5rem; }
+
+  .card {
+    --mx: 50%; --my: 50%; --rx: 0deg; --ry: 0deg;
+    position: relative; width: 280px; height: 420px; margin: 1.5rem auto; cursor: pointer;
+    transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
+    transform-style: preserve-3d; transition: transform .1s;
+  }
+  /* 뒤집기: 클릭하면 .flipped 가 붙어 inner 가 180도 돈다 */
+  .inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .7s; }
+  .card.flipped .inner { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; border-radius: 16px; overflow: hidden; backface-visibility: hidden; box-shadow: 0 10px 30px #0008; }
+  .front { padding: 14px; box-sizing: border-box; background: linear-gradient(160deg, #2b2f4a, #14152a); color: #eee; text-align: left; }
+  .back { transform: rotateY(180deg); background: #2a4a9b; }
+  .card .back img { width: 100%; height: 100%; object-fit: cover; display: block; } /* .card img(200px)보다 우선하도록 .card 를 붙임 */
+  .card .art { background: #fff; border-radius: 8px; text-align: center; }
+  /* 선명하게: 더 크게 + 대비·채도를 올리고 윤곽 그림자 */
+  .card img { width: 212px; height: 212px; object-fit: contain; filter: contrast(1.1) saturate(1.2) drop-shadow(0 4px 6px #000a); }
+  .card h2 { margin: .5rem 0 .2rem; text-transform: capitalize; }
+  .card .types { font-size: .85rem; margin-bottom: .5rem; }
+  .stat { display: flex; align-items: center; gap: 6px; font-size: .8rem; margin: 2px 0; }
+  .stat span:first-child { width: 36px; }
+  .bar { flex: 1; height: 8px; background: #fff3; border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: #ffb703; }
+
+  /* 광택: 무지개 줄무늬 + 마우스 따라다니는 하이라이트 */
+  .front::before, .front::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
+  .front::before {
+    background: linear-gradient(115deg, transparent 20%, #ff74b8 35%, #ffe96b 45%, #6bffb0 55%, #6bc4ff 65%, transparent 80%);
+    background-size: 250% 250%; background-position: var(--mx) var(--my);
+    mix-blend-mode: color-dodge; opacity: .3; /* 어두운 배경에서 그림이 뿌예지지 않게 낮춤 */
+  }
+  .front::after {
+    background: radial-gradient(circle at var(--mx) var(--my), #fff9 0%, transparent 45%);
+    mix-blend-mode: overlay;
+  }
+
+  .small { color: #aab; font-size: .85rem; }
+  #apibox { max-width: 520px; margin: 2rem auto 0; padding: .8rem; border: 1px solid #667; border-radius: 8px; font-size: .85rem; word-break: break-all; text-align: left; }
+  #apibox a { color: #8cf; }
+</style>
+</head>
+<body>
+  <h1>✨ 랜덤 포켓몬 카드</h1>
+  <button id="draw">다른 포켓몬 뽑기</button>
+  <div id="status"></div>
+  <div class="small">카드를 클릭하면 뒤집혀요</div>
+  <div id="slot"></div>
+
+  <div class="small">출처: PokeAPI (pokeapi.co)</div>
+
+  <div id="apibox">
+    🔌 이 화면이 쓰는 API<br>
+    <span id="apiurl"></span><br>
+    <a id="apilink" target="_blank" rel="noopener">새 탭에서 원본 JSON 보기</a>
+  </div>
+
+<script>
+  const API = {
+    pokemon: "https://pokeapi.co/api/v2/pokemon/" // 🔌 포켓몬 정보 (뒤에 도감 번호가 붙음)
+  };
+  const BACK = "https://upload.wikimedia.org/wikipedia/en/3/36/Pokemon_Trading_Card_Game_cardback.png"; // 🔌 카드 뒷면 이미지 (API 아님, 위키미디어 이미지)
+  const COUNT = 1025; // shortcut: 도감 총수를 직접 적은 값, PokeAPI에 새 포켓몬이 늘면 고칠 것
+
+  const $ = id => document.getElementById(id);
+  const STATS = [["hp", "HP"], ["attack", "공격"], ["defense", "방어"], ["speed", "속도"]];
+
+  async function draw() {
+    const url = API.pokemon + (1 + Math.floor(Math.random() * COUNT)); // 🔌 실제 호출 주소
+    $("apiurl").textContent = url;
+    $("apilink").href = url;
+    $("draw").disabled = true;
+    $("status").textContent = "불러오는 중…";
+    try {
+      const r = await fetch(url); // 🔌 API 호출
+      if (!r.ok) throw new Error(r.status);
+      show(await r.json());
+      $("status").textContent = "";
+    } catch {
+      $("status").textContent = "포켓몬을 불러오지 못했어요. 다시 눌러 보세요.";
+    }
+    $("draw").disabled = false;
+  }
+
+  function show(p) {
+    const img = p.sprites.other["official-artwork"].front_default || p.sprites.front_default;
+    const stat = n => p.stats.find(s => s.stat.name === n).base_stat;
+    $("slot").innerHTML = `
+      <div class="card" id="card" tabindex="0" role="button" aria-label="카드 뒤집기">
+        <div class="inner">
+          <div class="face front">
+            <div class="art"><img src="${img}" alt="${p.name}"></div>
+            <h2>#${p.id} ${p.name}</h2>
+            <div class="types">${p.types.map(t => t.type.name).join(" · ")}</div>
+            ${STATS.map(([k, label]) => `<div class="stat"><span>${label}</span><div class="bar"><i style="width:${Math.min(stat(k) / 2, 100)}%"></i></div><span>${stat(k)}</span></div>`).join("")}
+          </div>
+          <div class="face back"><img src="${BACK}" alt="포켓몬 카드 뒷면"></div>
+        </div>
+      </div>`;
+    const card = $("card");
+    const flip = () => card.classList.toggle("flipped");
+    card.addEventListener("click", flip);
+    card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(); } });
+    const move = e => {
+      const b = card.getBoundingClientRect();
+      const x = (e.clientX - b.left) / b.width, y = (e.clientY - b.top) / b.height;
+      card.style.setProperty("--mx", x * 100 + "%");
+      card.style.setProperty("--my", y * 100 + "%");
+      card.style.setProperty("--ry", (x - .5) * 24 + "deg");
+      card.style.setProperty("--rx", (.5 - y) * 24 + "deg");
+    };
+    const reset = () => ["--mx", "--my", "--rx", "--ry"].forEach(v => card.style.removeProperty(v));
+    card.addEventListener("pointermove", move);
+    card.addEventListener("pointerleave", reset);
+  }
+
+  $("draw").addEventListener("click", draw);
+  draw();
+</script>
+</body>
+</html>

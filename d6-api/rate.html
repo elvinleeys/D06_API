@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>환율 계산기</title>
+<style>
+  body { font-family: sans-serif; max-width: 420px; margin: 2rem auto; padding: 0 1rem; }
+  input, select { font-size: 1.1rem; padding: .4rem; }
+  #result { font-size: 1.8rem; font-weight: bold; margin: 1.2rem 0 .3rem; }
+  #date, #source { color: #555; font-size: .9rem; }
+  #apibox { margin-top: 2rem; padding: .8rem; border: 1px solid #aaa; border-radius: 8px; font-size: .85rem; word-break: break-all; }
+</style>
+</head>
+<body>
+  <h1>💱 환율 계산기</h1>
+  <input id="amount" type="number" value="1" min="0" step="any">
+  <select id="from">
+    <option>USD</option><option>JPY</option><option>EUR</option><option>CNY</option>
+  </select>
+  → 원(KRW)
+
+  <div id="result">불러오는 중…</div>
+  <div id="date"></div>
+  <div id="source">Data by Frankfurter (유럽중앙은행 기준 환율)</div>
+
+  <div id="apibox">
+    🔌 이 화면이 쓰는 API<br>
+    <span id="apiurl"></span><br>
+    <a id="apilink" target="_blank" rel="noopener">새 탭에서 원본 JSON 보기</a>
+  </div>
+
+<script>
+  const API = {
+    base: "https://api.frankfurter.dev/v1/latest", // 🔌 환율 API 주소 (키 없음)
+    to: "KRW"                                      // 🔌 바꿀 통화: 원화
+  };
+
+  async function update() {
+    const amount = document.getElementById("amount").value;
+    const from = document.getElementById("from").value;
+    const result = document.getElementById("result");
+    const url = `${API.base}?amount=${encodeURIComponent(amount)}&base=${from}&symbols=${API.to}`; // 🔌 실제 호출 주소
+
+    document.getElementById("apiurl").textContent = url;
+    document.getElementById("apilink").href = url;
+    result.textContent = "불러오는 중…";
+    try {
+      const r = await fetch(url); // 🔌 API 호출
+      if (!r.ok) throw new Error(r.status);
+      const d = await r.json();
+      result.textContent = `${Number(amount).toLocaleString()} ${from} = ${d.rates.KRW.toLocaleString()} 원`;
+      document.getElementById("date").textContent = `기준 날짜: ${d.date} (하루 한 번 발표되는 기준 환율)`;
+    } catch {
+      result.textContent = "환율을 불러오지 못했어요";
+      document.getElementById("date").textContent = "";
+    }
+  }
+
+  document.getElementById("amount").addEventListener("input", update);
+  document.getElementById("from").addEventListener("change", update);
+  update();
+</script>
+</body>
+</html>

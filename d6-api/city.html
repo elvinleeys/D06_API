@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>도시 날씨와 미세먼지</title>
+<style>
+  body { font-family: sans-serif; max-width: 460px; margin: 2rem auto; padding: 0 1rem; }
+  input, button { font-size: 1.1rem; padding: .4rem; }
+  .card { border: 1px solid #ccc; border-radius: 8px; padding: .8rem; margin-top: 1rem; }
+  .big { font-size: 1.6rem; font-weight: bold; }
+  .small { color: #555; font-size: .85rem; }
+  #apibox { margin-top: 2rem; padding: .8rem; border: 1px solid #aaa; border-radius: 8px; font-size: .85rem; word-break: break-all; }
+</style>
+</head>
+<body>
+  <h1>🏙️ 도시 날씨와 미세먼지</h1>
+  <form id="form">
+    <input id="name" value="서울" placeholder="도시 이름">
+    <button>찾기</button>
+  </form>
+  <div id="place" class="small"></div>
+
+  <div class="card"><b>🌡️ 기온</b><div id="weather" class="big"></div><div id="wtime" class="small"></div></div>
+  <div class="card"><b>😷 미세먼지 (환경부 기준 등급)</b><div id="air" class="big"></div><div id="atime" class="small"></div></div>
+
+  <div class="small" style="margin-top:1rem">
+    Weather data by Open-Meteo.com. 미세먼지 값은 Open-Meteo의 대기질 모델 값이라 한국 측정소 값과 다를 수 있어요.
+  </div>
+
+  <div id="apibox">
+    🔌 이 화면이 쓰는 API (위에서부터 순서대로)
+    <ol id="apilist"></ol>
+  </div>
+
+<script>
+  const API = {
+    geo: "https://geocoding-api.open-meteo.com/v1/search",        // 🔌 1번: 도시 이름 → 위도·경도
+    weather: "https://api.open-meteo.com/v1/forecast",            // 🔌 2번: 좌표 → 기온
+    air: "https://air-quality-api.open-meteo.com/v1/air-quality"  // 🔌 2번: 좌표 → pm10, pm2_5
+  };
+
+  // 환경부 기준 [좋음 상한, 보통 상한, 나쁨 상한] (㎍/㎥), 넘으면 매우나쁨
+  const LIMITS = { pm10: [30, 80, 150], pm2_5: [15, 35, 75] };
+  const GRADES = ["좋음 😀", "보통 🙂", "나쁨 😷", "매우나쁨 🤢"];
+  const grade = (k, v) => GRADES[LIMITS[k].filter(m => v > m).length];
+
+  const $ = id => document.getElementById(id);
+
+  function addApi(label, url) {
+    $("apilist").insertAdjacentHTML("beforeend", `<li>${label}: ${url}<br><a href="${url}" target="_blank" rel="noopener">새 탭에서 원본 JSON 보기</a></li>`);
+  }
+
+  // 카드마다 따로: 하나가 실패해도 다른 카드는 그대로 보인다
+  async function load(card, url, render) {
+    $(card).textContent = "불러오는 중…";
+    try {
+      const r = await fetch(url); // 🔌 API 호출
+      if (!r.ok) throw new Error(r.status);
+      render(await r.json());
+    } catch {
+      $(card).textContent = "불러오지 못했어요";
+    }
+  }
+
+  $("form").addEventListener("submit", async e => {
+    e.preventDefault();
+    $("apilist").innerHTML = "";
+    $("weather").textContent = $("air").textContent = $("wtime").textContent = $("atime").textContent = "";
+    $("place").textContent = "도시 찾는 중…";
+
+    const geoUrl = `${API.geo}?name=${encodeURIComponent($("name").value)}&count=1&language=ko`; // 🔌 1번 주소
+    addApi("1번 도시 찾기", geoUrl);
+    let place;
+    try {
+      const r = await fetch(geoUrl); // 🔌 API 호출
+      if (!r.ok) throw new Error(r.status);
+      place = (await r.json()).results?.[0];
+    } catch {
+      $("place").textContent = "도시를 찾지 못했어요 (인터넷을 확인해 주세요)";
+      return;
+    }
+    if (!place) { $("place").textContent = "그런 도시가 없어요"; return; }
+    $("place").textContent = `${place.name} (${place.country ?? ""}) 위도 ${place.latitude}, 경도 ${place.longitude}`;
+
+    // 1번 응답의 latitude, longitude 가 2번 주소에 들어간다
+    const pos = `latitude=${place.latitude}&longitude=${place.longitude}`;
+    const wUrl = `${API.weather}?${pos}&current=temperature_2m&timezone=auto`;        // 🔌 2번 주소
+    const aUrl = `${API.air}?${pos}&current=pm10,pm2_5&timezone=auto`;                // 🔌 2번 주소
+    addApi("2번 기온", wUrl);
+    addApi("2번 미세먼지", aUrl);
+
+    load("weather", wUrl, d => {
+      $("weather").textContent = d.current.temperature_2m + "°C";
+      $("wtime").textContent = "기준 시각: " + d.current.time;
+    });
+    load("air", aUrl, d => {
+      const c = d.current;
+      $("air").innerHTML = `PM10 ${c.pm10} → ${grade("pm10", c.pm10)}<br>PM2.5 ${c.pm2_5} → ${grade("pm2_5", c.pm2_5)}`;
+      $("atime").textContent = "기준 시각: " + c.time;
+    });
+  });
+
+  $("form").requestSubmit();
+</script>
+</body>
+</html>
